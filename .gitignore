@@ -86,6 +86,7 @@ tradingagents.egg-info/
 .vscode/settings.json
 # 日志文件
 *.log
+*.log.txt
 
 # 过时的版本文档
 *_PREVIEW_README.md
@@ -118,3 +119,13 @@ COMMIT_SUMMARY.md
 *.temp
 *.pyc.*
 *.pyo.*
+
+# 数据库相关忽略文件
+/data/db/
+/data/log/
+mongod.log*
+
+# Redis数据文件
+dump.rdb
+appendonly.aof
+redis.log*

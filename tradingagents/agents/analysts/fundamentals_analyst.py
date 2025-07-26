@@ -129,7 +129,7 @@ def create_fundamentals_analyst(llm, toolkit):
             logger.debug(f"📊 [DEBUG] 🔧 统一工具将自动处理: {market_info['market_name']}")
         else:
             # 离线模式：优先使用FinnHub数据，SimFin作为补充
-            if is_china:
+            if market_info['is_china']:
                 # A股使用本地缓存数据
                 tools = [
                     toolkit.get_china_stock_data,
@@ -275,7 +275,7 @@ def create_fundamentals_analyst(llm, toolkit):
                 logger.info(f"🔍 [股票代码追踪] LLM返回内容中包含正确股票代码 002027")
 
         logger.debug(f"📊 [DEBUG] 结果类型: {type(result)}")
-        logger.debug(f"📊 [DEBUG] 工具调用数量: {len(result.tool_calls) if hasattr(result, 'tool_calls') else 0}")
+        logger.debug(f"📊 [DEBUG] 工具调用数量: {len(getattr(result, 'tool_calls', []))}")
         logger.debug(f"📊 [DEBUG] 内容长度: {len(result.content) if hasattr(result, 'content') else 0}")
 
         # 检查工具调用 - 安全地获取工具名称
@@ -288,21 +288,22 @@ def create_fundamentals_analyst(llm, toolkit):
             else:
                 expected_tools.append(str(tool))
 
-        actual_tools = [tc['name'] for tc in result.tool_calls] if hasattr(result, 'tool_calls') and result.tool_calls else []
+        actual_tools = [tc['name'] for tc in getattr(result, 'tool_calls', [])]
 
         logger.debug(f"📊 [DEBUG] 期望的工具: {expected_tools}")
         logger.debug(f"📊 [DEBUG] 实际调用的工具: {actual_tools}")
 
         # 处理基本面分析报告
-        if hasattr(result, 'tool_calls') and len(result.tool_calls) > 0:
+        tool_calls = getattr(result, 'tool_calls', [])
+        if len(tool_calls) > 0:
             # 有工具调用，记录工具调用信息
             tool_calls_info = []
-            for tc in result.tool_calls:
+            for tc in tool_calls:
                 tool_calls_info.append(tc['name'])
                 logger.debug(f"📊 [DEBUG] 工具调用 {len(tool_calls_info)}: {tc}")
-            
+
             logger.info(f"📊 [基本面分析师] 工具调用: {tool_calls_info}")
-            
+
             # 返回状态，让工具执行
             return {"messages": [result]}
         
@@ -380,7 +381,7 @@ def create_fundamentals_analyst(llm, toolkit):
                 analysis_result = analysis_chain.invoke({"analysis_request": analysis_prompt})
                 
                 if hasattr(analysis_result, 'content'):
-                    report = analysis_result.content
+                    report = str(analysis_result.content)
                 else:
                     report = str(analysis_result)
 
@@ -426,9 +427,5 @@ def create_fundamentals_analyst(llm, toolkit):
                 report = f"基本面分析失败：{str(e)}"
             
             return {"fundamentals_report": report}
-
-        # 这里不应该到达，但作为备用
-        logger.debug(f"📊 [DEBUG] 返回状态: fundamentals_report长度={len(result.content) if hasattr(result, 'content') else 0}")
-        return {"messages": [result]}
 
     return fundamentals_analyst_node

@@ -1,13 +1,17 @@
 # TradingAgents/graph/setup.py
 
-from typing import Dict, Any
+from typing import Any, Union
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import END, StateGraph, START
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import Toolkit
+from tradingagents.llm_adapters import ChatDashScopeOpenAI
+from tradingagents.llm_adapters.deepseek_adapter import ChatDeepSeek
 
 from .conditional_logic import ConditionalLogic
 
@@ -15,23 +19,32 @@ from .conditional_logic import ConditionalLogic
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
+# 定义支持的LLM类型
+SupportedLLM = Union[
+    ChatOpenAI,
+    ChatAnthropic,
+    ChatGoogleGenerativeAI,
+    ChatDashScopeOpenAI,
+    ChatDeepSeek
+]
+
 
 class GraphSetup:
     """Handles the setup and configuration of the agent graph."""
 
     def __init__(
         self,
-        quick_thinking_llm: ChatOpenAI,
-        deep_thinking_llm: ChatOpenAI,
+        quick_thinking_llm: SupportedLLM,
+        deep_thinking_llm: SupportedLLM,
         toolkit: Toolkit,
-        tool_nodes: Dict[str, ToolNode],
+        tool_nodes: dict[str, ToolNode],
         bull_memory,
         bear_memory,
         trader_memory,
         invest_judge_memory,
         risk_manager_memory,
         conditional_logic: ConditionalLogic,
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] | None = None,
         react_llm = None,
     ):
         """Initialize with required components."""

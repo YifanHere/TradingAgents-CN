@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import json
 from datetime import date
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Any, Tuple, List, Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -44,7 +44,7 @@ class TradingAgentsGraph:
         self,
         selected_analysts=["market", "social", "news", "fundamentals"],
         debug=False,
-        config: Dict[str, Any] = None,
+        config: dict[str, Any] | None = None,
     ):
         """Initialize the trading agents graph and components.
 
@@ -70,8 +70,24 @@ class TradingAgentsGraph:
             self.deep_thinking_llm = ChatOpenAI(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
             self.quick_thinking_llm = ChatOpenAI(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
         elif self.config["llm_provider"].lower() == "anthropic":
-            self.deep_thinking_llm = ChatAnthropic(model=self.config["deep_think_llm"], base_url=self.config["backend_url"])
-            self.quick_thinking_llm = ChatAnthropic(model=self.config["quick_think_llm"], base_url=self.config["backend_url"])
+            # ChatAnthropic 参数配置 - 与Google配置保持一致
+            anthropic_kwargs = {
+                "model": self.config["deep_think_llm"],
+                "temperature": self.config.get("temperature", 0.1),  # 与Google保持一致，允许配置覆盖
+                "max_tokens": self.config.get("max_tokens", 2000),   # 与Google保持一致，允许配置覆盖
+                "timeout": self.config.get("timeout", None),
+                "max_retries": self.config.get("max_retries", 2)
+            }
+            # 如果配置中有 backend_url，则通过 model_kwargs 传递
+            if "backend_url" in self.config and self.config["backend_url"]:
+                anthropic_kwargs["model_kwargs"] = {"base_url": self.config["backend_url"]}
+
+            self.deep_thinking_llm = ChatAnthropic(**anthropic_kwargs)
+
+            # 为 quick_thinking_llm 使用相同的配置，但更新模型名称
+            quick_anthropic_kwargs = anthropic_kwargs.copy()
+            quick_anthropic_kwargs["model"] = self.config["quick_think_llm"]
+            self.quick_thinking_llm = ChatAnthropic(**quick_anthropic_kwargs)
         elif self.config["llm_provider"].lower() == "google":
             google_api_key = os.getenv('GOOGLE_API_KEY')
             self.deep_thinking_llm = ChatGoogleGenerativeAI(
@@ -185,7 +201,7 @@ class TradingAgentsGraph:
         # Set up the graph
         self.graph = self.graph_setup.setup_graph(selected_analysts)
 
-    def _create_tool_nodes(self) -> Dict[str, ToolNode]:
+    def _create_tool_nodes(self) -> dict[str, ToolNode]:
         """Create tool nodes for different data sources."""
         return {
             "market": ToolNode(

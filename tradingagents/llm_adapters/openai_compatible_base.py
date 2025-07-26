@@ -25,6 +25,7 @@ try:
     TOKEN_TRACKING_ENABLED = True
     logger.info("✅ Token跟踪功能已启用")
 except ImportError:
+    token_tracker = None
     TOKEN_TRACKING_ENABLED = False
     logger.warning("⚠️ Token跟踪功能未启用")
 
@@ -129,19 +130,24 @@ class OpenAICompatibleBase(ChatOpenAI):
     
     def _track_token_usage(self, result: ChatResult, kwargs: Dict, start_time: float):
         """追踪token使用量"""
-        
+
+        # 检查token_tracker是否可用
+        if token_tracker is None:
+            logger.warning(f"⚠️ {self.provider_name} Token跟踪器不可用，跳过token使用量记录")
+            return
+
         # 提取token使用信息
         if hasattr(result, 'llm_output') and result.llm_output:
             token_usage = result.llm_output.get('token_usage', {})
-            
+
             input_tokens = token_usage.get('prompt_tokens', 0)
             output_tokens = token_usage.get('completion_tokens', 0)
-            
+
             if input_tokens > 0 or output_tokens > 0:
                 # 生成会话ID
                 session_id = kwargs.get('session_id', f"{self.provider_name}_{hash(str(kwargs))%10000}")
                 analysis_type = kwargs.get('analysis_type', 'stock_analysis')
-                
+
                 # 记录使用量
                 token_tracker.track_usage(
                     provider=self.provider_name,
@@ -151,15 +157,15 @@ class OpenAICompatibleBase(ChatOpenAI):
                     session_id=session_id,
                     analysis_type=analysis_type
                 )
-                
+
                 # 计算成本
-                cost = token_tracker.calculate_cost(
+                cost = token_tracker.estimate_cost(
                     provider=self.provider_name,
                     model_name=self.model_name,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens
+                    estimated_input_tokens=input_tokens,
+                    estimated_output_tokens=output_tokens
                 )
-                
+
                 # 使用统一日志管理器记录Token使用
                 logger_manager = get_logger_manager()
                 logger_manager.log_token_usage(

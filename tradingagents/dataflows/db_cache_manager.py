@@ -309,8 +309,8 @@ class DatabaseCacheManager:
         
         return None
     
-    def find_cached_stock_data(self, symbol: str, start_date: str = None,
-                              end_date: str = None, data_source: str = None,
+    def find_cached_stock_data(self, symbol: str, start_date: str | None = None,
+                              end_date: str | None = None, data_source: str | None = None,
                               max_age_hours: int = 6) -> Optional[str]:
         """查找匹配的缓存数据"""
         

@@ -261,9 +261,9 @@ class StockDataCache:
             logger.error(f"⚠️ 加载缓存数据失败: {e}")
             return None
     
-    def find_cached_stock_data(self, symbol: str, start_date: str = None,
-                              end_date: str = None, data_source: str = None,
-                              max_age_hours: int = None) -> Optional[str]:
+    def find_cached_stock_data(self, symbol: str, start_date: str | None = None,
+                              end_date: str | None = None, data_source: str | None = None,
+                              max_age_hours: int | None = None) -> Optional[str]:
         """
         查找匹配的缓存数据 - 支持智能市场分类查找
 

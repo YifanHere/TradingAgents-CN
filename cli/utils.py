@@ -171,19 +171,22 @@ def select_shallow_thinking_agent(provider) -> str:
     # 获取选项列表
     options = SHALLOW_AGENT_OPTIONS[provider.lower()]
 
+    # 创建选择列表
+    choices = [
+        questionary.Choice(display, value=value)
+        for display, value in options
+    ]
+
     # 为国产LLM设置默认选择
     default_choice = None
     if "阿里百炼" in provider:
-        default_choice = options[0][1]  # 通义千问 Turbo
+        default_choice = choices[0]  # 通义千问 Turbo
     elif "deepseek" in provider.lower():
-        default_choice = options[0][1]  # DeepSeek Chat (推荐选择)
+        default_choice = choices[0]  # DeepSeek Chat (推荐选择)
 
     choice = questionary.select(
         "选择您的快速思考LLM引擎 | Select Your [Quick-Thinking LLM Engine]:",
-        choices=[
-            questionary.Choice(display, value=value)
-            for display, value in options
-        ],
+        choices=choices,
         default=default_choice,
         instruction="\n- 使用方向键导航 | Use arrow keys to navigate\n- 按回车键选择 | Press Enter to select",
         style=questionary.Style(
@@ -253,19 +256,22 @@ def select_deep_thinking_agent(provider) -> str:
     # 获取选项列表
     options = DEEP_AGENT_OPTIONS[provider.lower()]
 
+    # 创建选择列表
+    choices = [
+        questionary.Choice(display, value=value)
+        for display, value in options
+    ]
+
     # 为国产LLM设置默认选择
     default_choice = None
     if "阿里百炼" in provider:
-        default_choice = options[0][1]  # 通义千问 Turbo
+        default_choice = choices[0]  # 通义千问 Turbo
     elif "deepseek" in provider.lower():
-        default_choice = options[0][1]  # DeepSeek Chat
+        default_choice = choices[0]  # DeepSeek Chat
 
     choice = questionary.select(
         "选择您的深度思考LLM引擎 | Select Your [Deep-Thinking LLM Engine]:",
-        choices=[
-            questionary.Choice(display, value=value)
-            for display, value in options
-        ],
+        choices=choices,
         default=default_choice,
         instruction="\n- 使用方向键导航 | Use arrow keys to navigate\n- 按回车键选择 | Press Enter to select",
         style=questionary.Style(
@@ -296,14 +302,17 @@ def select_llm_provider() -> tuple[str, str]:
         ("Openrouter", "https://openrouter.ai/api/v1"),
         ("Ollama", "http://localhost:11434/v1"),
     ]
-    
+
+    # 创建选择列表，确保default值引用的是同一个对象
+    choices = [
+        questionary.Choice(display, value=(display, value))
+        for display, value in BASE_URLS
+    ]
+
     choice = questionary.select(
         "选择您的LLM提供商 | Select your LLM Provider:",
-        choices=[
-            questionary.Choice(display, value=(display, value))
-            for display, value in BASE_URLS
-        ],
-        default=(BASE_URLS[0][0], BASE_URLS[0][1]),  # 默认选择阿里百炼的完整值
+        choices=choices,
+        default=choices[0],  # 使用choices列表中的第一个对象作为默认值
         instruction="\n- 使用方向键导航 | Use arrow keys to navigate\n- 按回车键选择 | Press Enter to select\n- 🇨🇳 推荐使用阿里百炼 (默认选择)",
         style=questionary.Style(
             [

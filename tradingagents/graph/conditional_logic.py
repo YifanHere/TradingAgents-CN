@@ -1,6 +1,7 @@
 # TradingAgents/graph/conditional_logic.py
 
 from tradingagents.agents.utils.agent_states import AgentState
+from langchain_core.messages import AIMessage
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
@@ -21,7 +22,7 @@ class ConditionalLogic:
         last_message = messages[-1]
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "tools_market"
         return "Msg Clear Market"
 
@@ -31,7 +32,7 @@ class ConditionalLogic:
         last_message = messages[-1]
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "tools_social"
         return "Msg Clear Social"
 
@@ -41,7 +42,7 @@ class ConditionalLogic:
         last_message = messages[-1]
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "tools_news"
         return "Msg Clear News"
 
@@ -51,7 +52,7 @@ class ConditionalLogic:
         last_message = messages[-1]
 
         # 只有AIMessage才有tool_calls属性
-        if hasattr(last_message, 'tool_calls') and last_message.tool_calls:
+        if isinstance(last_message, AIMessage) and last_message.tool_calls:
             return "tools_fundamentals"
         return "Msg Clear Fundamentals"
 

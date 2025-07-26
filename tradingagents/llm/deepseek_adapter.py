@@ -5,7 +5,9 @@ DeepSeek V3 LLM适配器
 
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Any
+from collections.abc import Sequence
+from pydantic import SecretStr
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_openai_functions_agent, AgentExecutor
 from langchain.schema import BaseMessage
@@ -28,12 +30,12 @@ class DeepSeekAdapter:
     BASE_URL = "https://api.deepseek.com"
     
     def __init__(
-        self, 
-        api_key: Optional[str] = None,
+        self,
+        api_key: str | None = None,
         model: str = "deepseek-chat",
         temperature: float = 0.1,
         max_tokens: int = 2000,
-        base_url: Optional[str] = None
+        base_url: str | None = None
     ):
         """
         初始化DeepSeek V3适配器
@@ -66,35 +68,26 @@ class DeepSeekAdapter:
         """初始化LangChain LLM"""
         try:
             # 使用最新的LangChain OpenAI接口
+            # 注意：max_tokens不是ChatOpenAI构造函数的参数，而是在调用时传递
             self.llm = ChatOpenAI(
                 model=self.model,
-                api_key=self.api_key,  # 新版本使用api_key而不是openai_api_key
-                base_url=self.base_url,  # 新版本使用base_url而不是openai_api_base
+                api_key=SecretStr(self.api_key) if self.api_key else None,
+                base_url=self.base_url,
                 temperature=self.temperature,
-                max_tokens=self.max_tokens,
                 streaming=False
             )
             logger.info("LangChain ChatOpenAI (DeepSeek)初始化成功")
         except Exception as e:
-            # 尝试使用旧版本的参数名
-            try:
-                self.llm = ChatOpenAI(
-                    model=self.model,
-                    openai_api_key=self.api_key,
-                    openai_api_base=self.base_url,
-                    temperature=self.temperature,
-                    max_tokens=self.max_tokens,
-                    streaming=False
-                )
-                logger.info("LangChain ChatOpenAI (DeepSeek)初始化成功 - 使用兼容模式")
-            except Exception as e2:
-                logger.error(f"初始化DeepSeek模型失败: {e}")
-                logger.error(f"兼容模式也失败: {e2}")
-                raise e
+            logger.error(f"初始化DeepSeek模型失败: {e}")
+            # 如果初始化失败，记录详细错误信息
+            logger.error(f"模型: {self.model}")
+            logger.error(f"Base URL: {self.base_url}")
+            logger.error(f"API Key存在: {bool(self.api_key)}")
+            raise e
     
     def create_agent(
-        self, 
-        tools: List[BaseTool], 
+        self,
+        tools: list[BaseTool],
         system_prompt: str,
         max_iterations: int = 10,
         verbose: bool = False
@@ -144,28 +137,40 @@ class DeepSeekAdapter:
             raise
     
     def chat(
-        self, 
-        messages: List[BaseMessage], 
+        self,
+        messages: Sequence[BaseMessage],
         **kwargs
     ) -> str:
         """
         直接聊天接口
-        
+
         Args:
             messages: 消息列表
             **kwargs: 其他参数
-            
+
         Returns:
             str: 模型回复
         """
         try:
+            # 如果调用者没有指定max_tokens，且实例有默认值，则使用默认值
+            if 'max_tokens' not in kwargs and self.max_tokens is not None:
+                kwargs['max_tokens'] = self.max_tokens
+
             response = self.llm.invoke(messages, **kwargs)
-            return response.content
+            # 确保返回字符串类型
+            content = response.content
+            if isinstance(content, str):
+                return content
+            elif isinstance(content, list):
+                # 如果是列表，连接成字符串
+                return ''.join(str(item) for item in content)
+            else:
+                return str(content)
         except Exception as e:
             logger.error(f"聊天调用失败: {e}")
             raise
     
-    def get_model_info(self) -> Dict[str, Any]:
+    def get_model_info(self) -> dict[str, Any]:
         """获取模型信息"""
         return {
             "provider": "DeepSeek",
@@ -180,7 +185,7 @@ class DeepSeekAdapter:
         }
     
     @classmethod
-    def get_available_models(cls) -> Dict[str, str]:
+    def get_available_models(cls) -> dict[str, str]:
         """获取可用模型列表"""
         return cls.SUPPORTED_MODELS.copy()
     

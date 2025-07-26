@@ -464,9 +464,9 @@ def update_display(layout, spinner_text=None):
     if spinner_text:
         messages_table.add_row("", "Spinner", spinner_text)
 
-    # Add a footer to indicate if messages were truncated
+    # Add a caption to indicate if messages were truncated
     if len(all_messages) > max_messages:
-        messages_table.footer = (
+        messages_table.caption = (
             f"[dim]Showing last {max_messages} of {len(all_messages)} messages[/dim]"
         )
 
@@ -1258,7 +1258,7 @@ def run_analysis():
         # 跟踪已完成的分析师，避免重复提示
         completed_analysts = set()
 
-        for chunk in graph.graph.stream(init_agent_state, **args):
+        for chunk in graph.graph.stream(init_agent_state, **args):  # type: ignore
             if len(chunk["messages"]) > 0:
                 # Get the last message from the chunk
                 last_message = chunk["messages"][-1]

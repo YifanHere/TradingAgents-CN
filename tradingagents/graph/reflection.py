@@ -1,17 +1,30 @@
 # TradingAgents/graph/reflection.py
 
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from tradingagents.llm_adapters import ChatDashScopeOpenAI, ChatDeepSeek
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import get_logger
 logger = get_logger("default")
 
+# 定义支持的LLM类型
+SupportedLLM = Union[
+    ChatOpenAI,
+    ChatAnthropic,
+    ChatGoogleGenerativeAI,
+    ChatDashScopeOpenAI,
+    ChatDeepSeek
+]
+
 
 class Reflector:
     """Handles reflection on decisions and updating memory."""
 
-    def __init__(self, quick_thinking_llm: ChatOpenAI):
+    def __init__(self, quick_thinking_llm: SupportedLLM):
         """Initialize the reflector with an LLM."""
         self.quick_thinking_llm = quick_thinking_llm
         self.reflection_system_prompt = self._get_reflection_prompt()
@@ -63,16 +76,17 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
         self, component_type: str, report: str, situation: str, returns_losses
     ) -> str:
         """Generate reflection for a component."""
+        # 创建正确的 BaseMessage 对象列表
         messages = [
-            ("system", self.reflection_system_prompt),
-            (
-                "human",
-                f"Returns: {returns_losses}\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}",
+            SystemMessage(content=self.reflection_system_prompt),
+            HumanMessage(
+                content=f"Returns: {returns_losses}\n\nAnalysis/Decision: {report}\n\nObjective Market Reports for Reference: {situation}"
             ),
         ]
 
         result = self.quick_thinking_llm.invoke(messages).content
-        return result
+        # 确保返回字符串类型
+        return str(result) if not isinstance(result, str) else result
 
     def reflect_bull_researcher(self, current_state, returns_losses, bull_memory):
         """Reflect on bull researcher's analysis and update memory."""

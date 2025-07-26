@@ -8,7 +8,7 @@ import os
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Tuple, Union
+from typing import List, Dict, Tuple, Union
 import warnings
 import time
 
@@ -33,6 +33,7 @@ try:
     import tushare as ts
     TUSHARE_AVAILABLE = True
 except ImportError:
+    ts = None  # 确保ts变量被定义，即使导入失败
     TUSHARE_AVAILABLE = False
     logger.error("❌ Tushare库未安装，请运行: pip install tushare")
 
@@ -40,7 +41,7 @@ except ImportError:
 class TushareProvider:
     """Tushare数据提供器"""
     
-    def __init__(self, token: str = None, enable_cache: bool = True):
+    def __init__(self, token: str | None = None, enable_cache: bool = True):
         """
         初始化Tushare提供器
         
@@ -72,7 +73,7 @@ class TushareProvider:
             return
 
         # 初始化Tushare API
-        if TUSHARE_AVAILABLE:
+        if TUSHARE_AVAILABLE and ts is not None:
             try:
                 ts.set_token(token)
                 self.api = ts.pro_api()
@@ -90,31 +91,46 @@ class TushareProvider:
         Returns:
             DataFrame: 股票列表数据
         """
-        if not self.connected:
-            logger.error(f"❌ Tushare未连接")
+        if not self.connected or self.api is None:
+            logger.error(f"❌ Tushare未连接或API对象为空")
             return pd.DataFrame()
-        
+
         try:
             # 尝试从缓存获取
-            if self.enable_cache:
+            if self.enable_cache and self.cache_manager is not None:
                 cache_key = self.cache_manager.find_cached_stock_data(
                     symbol="tushare_stock_list",
                     max_age_hours=24  # 股票列表缓存24小时
                 )
-                
+
                 if cache_key:
                     cached_data = self.cache_manager.load_stock_data(cache_key)
                     if cached_data is not None:
-                        # 检查是否为DataFrame且不为空
-                        if hasattr(cached_data, 'empty') and not cached_data.empty:
+                        # 检查数据类型并验证是否有效
+                        if isinstance(cached_data, pd.DataFrame) and not cached_data.empty:
                             logger.info(f"📦 从缓存获取股票列表: {len(cached_data)}条")
                             return cached_data
                         elif isinstance(cached_data, str) and cached_data.strip():
-                            logger.info(f"📦 从缓存获取股票列表: 字符串格式")
-                            return cached_data
-            
+                            logger.info(f"📦 从缓存获取股票列表: 字符串格式，尝试解析为DataFrame")
+                            try:
+                                # 尝试将字符串解析为DataFrame
+                                # 假设字符串是JSON格式或CSV格式
+                                import json
+                                if cached_data.strip().startswith('[') or cached_data.strip().startswith('{'):
+                                    # JSON格式
+                                    data_dict = json.loads(cached_data)
+                                    df = pd.DataFrame(data_dict)
+                                    if not df.empty:
+                                        logger.info(f"✅ 成功解析缓存字符串为DataFrame: {len(df)}条")
+                                        return df
+                                else:
+                                    # 可能是其他格式，记录警告并重新获取
+                                    logger.warning(f"⚠️ 缓存数据格式不支持，将重新获取: {type(cached_data)}")
+                            except Exception as e:
+                                logger.warning(f"⚠️ 解析缓存字符串失败: {e}，将重新获取数据")
+
             logger.info(f"🔄 从Tushare获取A股股票列表...")
-            
+
             # 获取股票基本信息
             stock_list = self.api.stock_basic(
                 exchange='',
@@ -146,7 +162,7 @@ class TushareProvider:
             logger.error(f"❌ 获取股票列表失败: {e}")
             return pd.DataFrame()
     
-    def get_stock_daily(self, symbol: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+    def get_stock_daily(self, symbol: str, start_date: str | None = None, end_date: str | None = None) -> pd.DataFrame:
         """
         获取股票日线数据
         
@@ -164,8 +180,8 @@ class TushareProvider:
         logger.info(f"🔍 [Tushare详细日志] 连接状态: {self.connected}")
         logger.info(f"🔍 [Tushare详细日志] API对象: {type(self.api).__name__ if self.api else 'None'}")
 
-        if not self.connected:
-            logger.error(f"❌ [Tushare详细日志] Tushare未连接，无法获取数据")
+        if not self.connected or self.api is None:
+            logger.error(f"❌ [Tushare详细日志] Tushare未连接或API对象为空，无法获取数据")
             return pd.DataFrame()
 
         try:
@@ -285,7 +301,7 @@ class TushareProvider:
         Returns:
             Dict: 股票基本信息
         """
-        if not self.connected:
+        if not self.connected or self.api is None:
             return {'symbol': symbol, 'name': f'股票{symbol}', 'source': 'unknown'}
         
         try:
@@ -334,7 +350,7 @@ class TushareProvider:
         Returns:
             Dict: 财务数据
         """
-        if not self.connected:
+        if not self.connected or self.api is None:
             return {}
         
         try:
@@ -474,7 +490,7 @@ def get_tushare_provider() -> TushareProvider:
     return _tushare_provider
 
 
-def get_china_stock_data_tushare(symbol: str, start_date: str = None, end_date: str = None) -> pd.DataFrame:
+def get_china_stock_data_tushare(symbol: str, start_date: str | None = None, end_date: str | None = None) -> pd.DataFrame:
     """
     获取中国股票数据的便捷函数（Tushare数据源）
     

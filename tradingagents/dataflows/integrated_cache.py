@@ -120,8 +120,8 @@ class IntegratedCacheManager:
             # 使用传统缓存系统
             return self.legacy_cache.load_stock_data(cache_key)
     
-    def find_cached_stock_data(self, symbol: str, start_date: str = None, 
-                              end_date: str = None, data_source: str = "default") -> Optional[str]:
+    def find_cached_stock_data(self, symbol: str, start_date: str | None = None,
+                              end_date: str | None = None, data_source: str = "default") -> Optional[str]:
         """
         查找缓存的股票数据
         

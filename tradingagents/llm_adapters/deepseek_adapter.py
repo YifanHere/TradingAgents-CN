@@ -4,11 +4,14 @@ DeepSeek LLM适配器，支持Token使用统计
 
 import os
 import time
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, cast
+from pydantic import SecretStr
 from langchain_core.messages import BaseMessage, AIMessage, HumanMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langchain_openai import ChatOpenAI
 from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.language_models.base import LanguageModelInput
+from langchain_core.runnables import RunnableConfig
 
 # 导入统一日志系统
 from tradingagents.utils.logging_init import setup_llm_logging
@@ -24,6 +27,7 @@ try:
     TOKEN_TRACKING_ENABLED = True
     logger.info("✅ Token跟踪功能已启用")
 except ImportError:
+    token_tracker = None
     TOKEN_TRACKING_ENABLED = False
     logger.warning("⚠️ Token跟踪功能未启用")
 
@@ -38,10 +42,10 @@ class ChatDeepSeek(ChatOpenAI):
     def __init__(
         self,
         model: str = "deepseek-chat",
-        api_key: Optional[str] = None,
+        api_key: str | None = None,
         base_url: str = "https://api.deepseek.com",
         temperature: float = 0.1,
-        max_tokens: Optional[int] = None,
+        max_tokens: int | None = None,
         **kwargs
     ):
         """
@@ -63,12 +67,14 @@ class ChatDeepSeek(ChatOpenAI):
                 raise ValueError("DeepSeek API密钥未找到。请设置DEEPSEEK_API_KEY环境变量或传入api_key参数。")
         
         # 初始化父类
+        # 注意：根据OpenAI最新API规范，max_tokens参数已改名为max_completion_tokens
+        # 根据新版langchain_openai文档，ChatOpenAI类的参数名发生了变化
         super().__init__(
             model=model,
-            openai_api_key=api_key,
-            openai_api_base=base_url,
+            api_key=SecretStr(api_key) if api_key else None,  # 转换为SecretStr类型
+            base_url=base_url,  #openai_api_base=base_url → base_url=base_url
             temperature=temperature,
-            max_tokens=max_tokens,
+            max_completion_tokens=max_tokens,  # 使用新的参数名
             **kwargs
         )
         
@@ -76,9 +82,9 @@ class ChatDeepSeek(ChatOpenAI):
         
     def _generate(
         self,
-        messages: List[BaseMessage],
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: CallbackManagerForLLMRun | None = None,
         **kwargs: Any,
     ) -> ChatResult:
         """
@@ -116,7 +122,7 @@ class ChatDeepSeek(ChatOpenAI):
                 logger.info(f"📊 [DeepSeek] 实际token使用: 输入={input_tokens}, 输出={output_tokens}")
             
             # 记录token使用量
-            if TOKEN_TRACKING_ENABLED and (input_tokens > 0 or output_tokens > 0):
+            if TOKEN_TRACKING_ENABLED and token_tracker is not None and (input_tokens > 0 or output_tokens > 0):
                 try:
                     # 使用提取的参数或生成默认值
                     if session_id is None:
@@ -159,7 +165,7 @@ class ChatDeepSeek(ChatOpenAI):
             logger.error(f"❌ [DeepSeek] 调用失败: {e}", exc_info=True)
             raise
     
-    def _estimate_input_tokens(self, messages: List[BaseMessage]) -> int:
+    def _estimate_input_tokens(self, messages: list[BaseMessage]) -> int:
         """
         估算输入token数量
         
@@ -200,8 +206,8 @@ class ChatDeepSeek(ChatOpenAI):
     
     def invoke(
         self,
-        input: Union[str, List[BaseMessage]],
-        config: Optional[Dict] = None,
+        input: LanguageModelInput,
+        config: RunnableConfig | None = None,
         **kwargs: Any,
     ) -> AIMessage:
         """
@@ -216,18 +222,55 @@ class ChatDeepSeek(ChatOpenAI):
             AI消息响应
         """
         
-        # 处理输入
+        # 处理输入，确保转换为 list[BaseMessage]
         if isinstance(input, str):
-            messages = [HumanMessage(content=input)]
+            messages: list[BaseMessage] = [HumanMessage(content=input)]
+        elif isinstance(input, list) and all(isinstance(msg, BaseMessage) for msg in input):
+            messages = cast(list[BaseMessage], list(input))  # 类型安全的转换
         else:
-            messages = input
+            # 处理 PromptValue 或其他类型
+            from langchain_core.prompt_values import PromptValue
+            if isinstance(input, PromptValue):
+                messages = input.to_messages()
+            else:
+                # 尝试转换为消息列表，假设是消息类似的表示
+                try:
+                    # 如果是序列，尝试转换每个元素
+                    converted_messages = []
+                    for item in input:
+                        if isinstance(item, BaseMessage):
+                            converted_messages.append(item)
+                        elif isinstance(item, str):
+                            converted_messages.append(HumanMessage(content=item))
+                        elif isinstance(item, tuple) and len(item) == 2:
+                            role, content = item
+                            if role == "human":
+                                converted_messages.append(HumanMessage(content=content))
+                            elif role == "ai":
+                                converted_messages.append(AIMessage(content=content))
+                            elif role == "system":
+                                converted_messages.append(SystemMessage(content=content))
+                            else:
+                                converted_messages.append(HumanMessage(content=str(content)))
+                        else:
+                            converted_messages.append(HumanMessage(content=str(item)))
+                    messages = converted_messages
+                except Exception:
+                    # 如果转换失败，将整个输入作为字符串处理
+                    messages = [HumanMessage(content=str(input))]
         
         # 调用生成方法
         result = self._generate(messages, **kwargs)
         
         # 返回第一个生成结果的消息
         if result.generations:
-            return result.generations[0].message
+            message = result.generations[0].message
+            # 确保返回 AIMessage 类型
+            if isinstance(message, AIMessage):
+                return message
+            else:
+                # 如果不是 AIMessage，转换为 AIMessage
+                return AIMessage(content=message.content if hasattr(message, 'content') else str(message))
         else:
             return AIMessage(content="")
 
@@ -235,7 +278,7 @@ class ChatDeepSeek(ChatOpenAI):
 def create_deepseek_llm(
     model: str = "deepseek-chat",
     temperature: float = 0.1,
-    max_tokens: Optional[int] = None,
+    max_tokens: int | None = None,
     **kwargs
 ) -> ChatDeepSeek:
     """

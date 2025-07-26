@@ -1,22 +1,36 @@
 # TradingAgents/graph/signal_processing.py
 
+from typing import Union
 from langchain_openai import ChatOpenAI
+from langchain_anthropic import ChatAnthropic
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import SystemMessage, HumanMessage
+from tradingagents.llm_adapters import ChatDashScopeOpenAI, ChatDeepSeek
 
 # 导入统一日志系统和图处理模块日志装饰器
 from tradingagents.utils.logging_init import get_logger
 from tradingagents.utils.tool_logging import log_graph_module
 logger = get_logger("graph.signal_processing")
 
+# 定义支持的LLM类型
+SupportedLLM = Union[
+    ChatOpenAI,
+    ChatAnthropic,
+    ChatGoogleGenerativeAI,
+    ChatDashScopeOpenAI,
+    ChatDeepSeek
+]
+
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
 
-    def __init__(self, quick_thinking_llm: ChatOpenAI):
+    def __init__(self, quick_thinking_llm: SupportedLLM):
         """Initialize with an LLM for processing."""
         self.quick_thinking_llm = quick_thinking_llm
 
     @log_graph_module("signal_processing")
-    def process_signal(self, full_signal: str, stock_symbol: str = None) -> dict:
+    def process_signal(self, full_signal: str, stock_symbol: str | None = None) -> dict:
         """
         Process a full trading signal to extract structured decision information.
 
@@ -31,7 +45,23 @@ class SignalProcessor:
         # 检测股票类型和货币
         from tradingagents.utils.stock_utils import StockUtils
 
-        market_info = StockUtils.get_market_info(stock_symbol)
+        # 处理stock_symbol为None的情况
+        if stock_symbol is None:
+            # 使用默认值，假设为A股
+            market_info = {
+                'ticker': None,
+                'market': 'china_a',
+                'market_name': '中国A股',
+                'currency_name': '人民币',
+                'currency_symbol': '¥',
+                'data_source': 'china_unified',
+                'is_china': True,
+                'is_hk': False,
+                'is_us': False
+            }
+        else:
+            market_info = StockUtils.get_market_info(stock_symbol)
+
         is_china = market_info['is_china']
         is_hk = market_info['is_hk']
         currency = market_info['currency_name']
@@ -41,9 +71,7 @@ class SignalProcessor:
                    extra={'stock_symbol': stock_symbol, 'market': market_info['market_name'], 'currency': currency})
 
         messages = [
-            (
-                "system",
-                f"""您是一位专业的金融分析助手，负责从交易员的分析报告中提取结构化的投资决策信息。
+            SystemMessage(content=f"""您是一位专业的金融分析助手，负责从交易员的分析报告中提取结构化的投资决策信息。
 
 请从提供的分析报告中提取以下信息，并以JSON格式返回：
 
@@ -66,13 +94,17 @@ class SignalProcessor:
 - 股票代码 {stock_symbol or '未知'} 是{market_info['market_name']}，使用{currency}计价
 - 目标价格必须与股票的交易货币一致（{currency_symbol}）
 
-如果某些信息在报告中没有明确提及，请使用合理的默认值。""",
-            ),
-            ("human", full_signal),
+如果某些信息在报告中没有明确提及，请使用合理的默认值。"""),
+            HumanMessage(content=full_signal),
         ]
 
         try:
             response = self.quick_thinking_llm.invoke(messages).content
+
+            # 确保response是字符串类型
+            if not isinstance(response, str):
+                response = str(response) if response is not None else ""
+
             logger.debug(f"🔍 [SignalProcessor] LLM响应: {response[:200]}...")
 
             # 尝试解析JSON响应
@@ -177,7 +209,7 @@ class SignalProcessor:
             # 回退到简单提取
             return self._extract_simple_decision(full_signal)
 
-    def _smart_price_estimation(self, text: str, action: str, is_china: bool) -> float:
+    def _smart_price_estimation(self, text: str, action: str, is_china: bool) -> float | None:
         """智能价格推算方法"""
         import re
         
